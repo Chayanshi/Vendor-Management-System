@@ -38,7 +38,6 @@ class UserSerializer(serializers.Serializer):
             vendor_data['user'] = user_instance
             vendor_instance = Vendor_model.objects.create(**vendor_data)
             print("user created with user and vendor model")
-            return user_instance, vendor_instance
         else:
             user_instance = User_model.objects.create_user(**validated_data)
             print("user created with user")

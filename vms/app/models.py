@@ -55,7 +55,7 @@ class User_model(AbstractBaseUser,PermissionsMixin):
 
 class Vendor_model(models.Model):
     user = models.OneToOneField(User_model,on_delete= models.CASCADE,related_name="vendor_user")
-    contact_details = models.CharField(max_length=500)
+    contact_details = models.CharField(max_length=500,blank=True,null=True)
     code = models.CharField(max_length=15,unique=True)
     on_time_delivery_rate = models.FloatField()
     quality_rating_avg = models.FloatField()
@@ -63,7 +63,7 @@ class Vendor_model(models.Model):
     fulfillment_rate = models.FloatField()
 
     def __str__(self):
-        return f"{self.vendor_code} - {self.user.username}"
+        return f"{self.code} - {self.user.username}"
     
 class Items_model(models.Model):
     name = models.CharField(max_length=100)
