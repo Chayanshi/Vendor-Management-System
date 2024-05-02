@@ -4,7 +4,7 @@ from .serializers import *
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
-from django.contrib.auth import login,logout
+from django.contrib.auth import login,logout,authenticate
 from django.contrib.auth.hashers import make_password,check_password
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -15,6 +15,7 @@ import re
 from datetime import datetime
 from django.utils import timezone
 from .email import *
+from django.db.models import Q
 # Create your views here.
 
 def get_tokens_for_user(user):
@@ -64,7 +65,8 @@ class CreateUser(APIView):
                 # password = make_password(input_data['password'])
                 
                 # input_data['password'] = password
-                if input_data['user_role'].lower()=='admin':
+                if input_data['user_role'].lower() =='admin':
+                    print("admin created")
                     input_data['is_superuser']=True
                     input_data['is_staff']=True
                 
@@ -75,7 +77,7 @@ class CreateUser(APIView):
 
                     return Response({'status':status.HTTP_201_CREATED,'response':'User creared successfully'},status=status.HTTP_201_CREATED)
                 return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'User can not be created','error':serializers.errors},status=status.HTTP_400_BAD_REQUEST)
-            return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'Password must contain a capital letter, lower letter, number and a special character'},status=status.HTTP_400_BAD_REQUEST)
+            return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'Password must contain a upper letter, lower letter, number and a special character'},status=status.HTTP_400_BAD_REQUEST)
             
         except Exception as e:
             return Response({'status':status.HTTP_500_INTERNAL_SERVER_ERROR,'response':e},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -138,7 +140,6 @@ class CreateVendor(APIView):
         except Exception as e:
             return Response({'status':status.HTTP_500_INTERNAL_SERVER_ERROR,'response':e},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
 #UserLogin     
 class UserLogin(APIView):
     @swagger_auto_schema(
@@ -167,10 +168,10 @@ class UserLogin(APIView):
             print("Provided Password:", password)
             print("Password Comparison Result:", check_password(password, user.password))
 
-            if user.is_block != True:
+            user = authenticate(request, email=email, password=password)
+            if user.is_block == False and user is not None :
                 if check_password(password,user.password): 
                     token=get_tokens_for_user(user)
-                    print(request.user) 
                     request.session['access_token'] = token
                     request.session.save()    
                     login(request,user)
@@ -179,7 +180,7 @@ class UserLogin(APIView):
             return Response({'status':status.HTTP_401_UNAUTHORIZED,"response":"User account is blocked"},status=status.HTTP_401_UNAUTHORIZED)
             
         except Exception as e:
-            return Response({'status':status.HTTP_404_NOT_FOUND,'response':'User not found, check you email'},status=status.HTTP_404_NOT_FOUND)
+            return Response({'status':status.HTTP_404_NOT_FOUND,'response':'User not found, check you email',"error":str(e)},status=status.HTTP_404_NOT_FOUND)
 
 class UserLogout(APIView):
     authentication_classes = [JWTAuthentication]
@@ -385,19 +386,32 @@ class UpdateUser(APIView):
         try:
             try:
                 user = User_model.objects.get(email=email)
-            except Exception as e:
-                return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "email not found"}, status=status.HTTP_400_BAD_REQUEST)
+            except User_model.DoesNotExist:
+                return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "User not found"}, status=status.HTTP_400_BAD_REQUEST)
             
-            print(request.user.user_role)
-            if request.user.user_role != "Admin" or request.user.user_role == user.user_role:
-                return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "You don't have authencetation to update this account. Only a admin or a self can update there account."}, status=status.HTTP_400_BAD_REQUEST)
-
             input_data = request.data
+            print(input_data)
+            
+            # Separate user data and vendor data
+            user_data = {k: v for k, v in input_data.items() if k not in ['contact_details', 'on_time_delivery_rate', 'quality_rating_avg', 'average_response_time', 'fulfillment_rate']}
+            vendor_data = {k: v for k, v in input_data.items() if k in ['contact_details', 'on_time_delivery_rate', 'quality_rating_avg', 'average_response_time', 'fulfillment_rate']}
 
-            ser = UserSerializer(user, data=input_data, partial=True)
+            # Update user data
+            ser = UserSerializer(user, data=user_data, partial=True)
             if ser.is_valid():
-                ser.save()
-                return Response({'status': status.HTTP_202_ACCEPTED, 'Response': "updated successfully"}, status=status.HTTP_202_ACCEPTED)
+                user_instance = ser.save()
+
+                # Update vendor data if the user is a vendor
+                if user_instance.user_role.lower() == 'vendor':
+                    try:
+                        vendor_instance = user_instance.vendor_user
+                        vendor_serializer = VendorSerializer(vendor_instance, data=vendor_data, partial=True)
+                        if vendor_serializer.is_valid():
+                            vendor_serializer.save()
+                    except Vendor_model.DoesNotExist:
+                        pass
+                
+                return Response({'status': status.HTTP_202_ACCEPTED, 'Response': "Updated successfully"}, status=status.HTTP_202_ACCEPTED)
             return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "Can't update data", "error": ser.errors},
                             status=status.HTTP_400_BAD_REQUEST)
 
@@ -429,17 +443,14 @@ class DeleteUser(APIView):
         except User_model.DoesNotExist:
             return Response({'status':status.HTTP_400_BAD_REQUEST,"message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
-
-
 class GetallUser(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
-    # pagination_classes = custompagination
     
     @swagger_auto_schema(
-        operation_description="Get all User detail,Only Admin have this permission",
+        operation_description="Get all User detail, Only Admin have this permission",
         operation_summary="All User Details",
-        tags=['Admin',"Vendor"],
+        tags=['Admin', 'Vendor'],
         manual_parameters=[
             openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication"),
             openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by email, first name, or last name (case-insensitive)")
@@ -448,30 +459,212 @@ class GetallUser(APIView):
     def get(self, request):
         try:
             search_query = request.query_params.get('search', '')
-            
-            if request.user.user_role in ['Admin','admin']:
-                users = User_model.objects.all().exclude(role='organizer')
-                
-            elif request.user.role in ['Vendor','vendor']:
-                users = User_model.objects.filter(role='player')
 
+            if request.user.user_role in ['Admin', 'admin']:
+                users = User_model.objects.exclude(user_role='Admin')
+            elif request.user.user_role in ['Vendor', 'vendor']:
+                users = User_model.objects.filter(user_role='Vendor')
             else:
-                return Response({'status': status.HTTP_400_BAD_REQUEST,'response':"You can't have authentication to access for this."}, status=status.HTTP_200_OK)
+                return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': "You can't have authentication to access for this."}, status=status.HTTP_200_OK)
 
-            # elif request.user.role in ['User','user']:
-            #     users = User_model.objects.get(email=request.user.email)
-
-
-            # Apply search filter if a search query is provided
             if search_query:
-                users = users.filter(Q(email__icontains=search_query) | Q(firstname__icontains=search_query) | Q(lastname__icontains=search_query))
-
-            # total_count = users.count()
-            # paginator = self.pagination_classes()
-            # users = paginator.paginate_queryset(queryset=users, request=request)
+                users = users.filter(Q(email__icontains=search_query) | Q(username__icontains=search_query))
 
             ser = UserSerializer(users, many=True)
             return Response({'status': status.HTTP_200_OK, 'response': ser.data}, status=status.HTTP_200_OK)
-        
         except Exception as e:
-            return Response({"status":status.HTTP_500_INTERNAL_SERVER_ERROR,"response":f"An internal error occur {str(e)}"},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class Get_ParticularUser(APIView):
+    authentication_classes=[JWTAuthentication]
+    permission_classes=[IsAuthenticated]
+    @swagger_auto_schema(
+        operation_description="Get particular Teacher detail, only a Principle or Admin can access this",
+        operation_summary="Principle Detail",
+        tags=['Admin',"Vendor"],
+        manual_parameters=[
+            openapi.Parameter('email',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter email to get verification otp"),
+            openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication")
+        ]
+    )
+    def get(self, request):
+        email = request.query_params.get('email')
+        try:
+            try:
+                user = User_model.objects.get(email=email)
+            except Exception as e:
+                return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+            ser = UserSerializer(user)
+            
+            return Response({'status': status.HTTP_200_OK, 'response': ser.data}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+ 
+
+
+#API's from Iteams
+class CreateItem(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+            operation_description="You can create a user as per roles like admin, vendor and user",
+            operation_summary="Create User as per required fields",
+            tags=['Item'],
+            request_body=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    required=['email','password'],
+                    properties={
+                        'name':openapi.Schema(type=openapi.TYPE_STRING),
+                        'description':openapi.Schema(type=openapi.TYPE_STRING),
+                        'price':openapi.Schema(type=openapi.TYPE_NUMBER),
+                        'quantity':openapi.Schema(type=openapi.TYPE_INTEGER)
+                    }
+                ),
+            manual_parameters=[
+                openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
+            ]
+        )
+    def post(self,request):
+        try:
+            input_data = request.data
+                
+            print("input_data",input_data)
+            serializers = ItemSerializer(data=input_data)
+            if serializers.is_valid():
+                serializers.save()
+
+                return Response({'status':status.HTTP_201_CREATED,'response':'Item created successfully'},status=status.HTTP_201_CREATED)
+            return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'Item can not be created','error':serializers.errors},status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            return Response({'status':status.HTTP_500_INTERNAL_SERVER_ERROR,'response':e},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class UpdateItem(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Update User details",
+        operation_summary="User Update",
+        tags=['Item'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=[],
+            properties={
+                'name':openapi.Schema(type=openapi.TYPE_STRING),
+                'description':openapi.Schema(type=openapi.TYPE_STRING),
+                'price':openapi.Schema(type=openapi.TYPE_NUMBER),
+                'quantity':openapi.Schema(type=openapi.TYPE_INTEGER)
+            }
+        ),
+        manual_parameters=[
+            openapi.Parameter('id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="Enter id of item"),
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
+        ]
+    )
+    def put(self, request):
+        id = request.query_params.get('id')
+
+        try:
+            try:
+                user = Items_model.objects.get(id=id)
+            except Items_model.DoesNotExist:
+                return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "Item not found"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            input_data = request.data
+            print(input_data)
+            
+            # Update user data
+            ser = ItemSerializer(user, data=input_data, partial=True)
+            if ser.is_valid():
+                ser.save()
+                
+                return Response({'status': status.HTTP_202_ACCEPTED, 'Response': "Updated successfully"}, status=status.HTTP_202_ACCEPTED)
+            return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "Can't update data", "error": ser.errors},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class DeleteItem(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    @swagger_auto_schema(
+        operation_description="Delete Item",
+        operation_summary="Delete Item",
+        tags=['Item'],
+        manual_parameters=
+        [
+            openapi.Parameter('id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="Enter id of item"),
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING),
+        ]
+    )
+    def delete(self,request):
+        id = request.query_params.get('id')
+        try:
+            user = Items_model.objects.get(id=id)
+            user.delete()
+            return Response({'status':status.HTTP_200_OK,"message": "Item deleted"}, status=status.HTTP_200_OK)
+        except Items_model.DoesNotExist:
+            return Response({'status':status.HTTP_400_BAD_REQUEST,"message": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
+
+class GetallItem(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Get all Item detail, Only Admin have this permission",
+        operation_summary="All Item Details",
+        tags=['Item'],
+        manual_parameters=[
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication"),
+            openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by email, first name, or last name (case-insensitive)")
+        ]
+    )
+    def get(self, request):
+        try:
+            search_query = request.query_params.get('search', '')
+
+            item_obj = Items_model.objects.all()
+            
+            if search_query:
+                item_obj = item_obj.filter(Q(name__icontains=search_query) | Q(price__icontains=search_query))
+
+            ser = ItemSerializer(item_obj, many=True)
+            return Response({'status': status.HTTP_200_OK, 'response': ser.data}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class Get_ParticularItem(APIView):
+    authentication_classes=[JWTAuthentication]
+    permission_classes=[IsAuthenticated]
+    @swagger_auto_schema(
+        operation_description="Get particular Teacher detail, only a Principle or Admin can access this",
+        operation_summary="Principle Detail",
+        tags=['Item'],
+        manual_parameters=[
+            openapi.Parameter('id',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter email to get verification otp"),
+            openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication")
+        ]
+    )
+    def get(self, request):
+        id = request.query_params.get('id')
+        try:
+            try:
+                item = Items_model.objects.get(id=id)
+            except Exception as e:
+                return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': 'Item not found'}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+            ser = ItemSerializer(item)
+            
+            return Response({'status': status.HTTP_200_OK, 'response': ser.data}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+ 
