@@ -80,7 +80,41 @@ class ItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = Items_model
         fields = "__all__"
+        
+
+# class PurchaseOrderSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = Purchase_order_model
+#         fields = ['po_number', 'vendor', 'order_date', 'delivery_date', 'items', 'quantity', 'status']
+
+#     def create(self, validated_data):
+#         items_data = validated_data.get('items')
+#         purchase_order = Purchase_order_model.objects.create(**validated_data)
+#         for item_data in items_data:
+#             item_id = item_data.pop('item_id')
+#             quantity = item_data.pop('quantity')
+#             purchase_order.items.add(item_id, through_defaults={'quantity': quantity})
+#         return purchase_order
+
 class PurchaseOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Purchase_order_model
         fields = "__all__"
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        print(instance,"\n",data)
+        try:
+            items = []
+            for item_id in data['items']:
+                item_instance = Items_model.objects.get(id=item_id)
+                print("item_instance",item_instance)
+                item_serializer = ItemSerializer(item_instance)
+                print("item_serializer",item_serializer.data)
+                items.append(item_serializer.data)
+
+            data['items'] = items
+        except Vendor_model.DoesNotExist:
+            data['vendor_details'] = None
+            
+        return data

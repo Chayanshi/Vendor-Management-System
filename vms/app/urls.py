@@ -40,4 +40,10 @@ urlpatterns = [
    path("DeleteItem",DeleteItem.as_view()),
    path("GetallItem",GetallItem.as_view()),
    path("Get_ParticularItem",Get_ParticularItem.as_view()),
+
+
+   path("Create_PurchaseOrder",Create_PurchaseOrder.as_view()),
+   path("GetallPurchaseOrder",GetallPurchaseOrder.as_view()),
+   path("Get_ParticularPurchaseOrder",Get_ParticularPurchaseOrder.as_view()),
+   path("DeleteItem",DeleteItem.as_view()),
 ]

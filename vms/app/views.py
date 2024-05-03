@@ -30,6 +30,7 @@ def get_random_otp():
     randomotp = random.randint(0000, 9999)
     return randomotp 
 
+
 #API to create a user with roles and details
 class CreateUser(APIView):
    @swagger_auto_schema(
@@ -505,8 +506,7 @@ class Get_ParticularUser(APIView):
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
  
 
-
-#API's from Iteams
+#API's from Items
 class CreateItem(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -534,6 +534,7 @@ class CreateItem(APIView):
             input_data = request.data
                 
             print("input_data",input_data)
+            input_data['name'] = input_data['name'].lower()
             serializers = ItemSerializer(data=input_data)
             if serializers.is_valid():
                 serializers.save()
@@ -668,3 +669,152 @@ class Get_ParticularItem(APIView):
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
  
+
+#API's for Purchase Order
+class Create_PurchaseOrder(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Create a new purchase order",
+        operation_summary="Create a new purchase order",
+        tags=['Purchase'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['vendor', 'items'],
+            properties={
+                'vendor': openapi.Schema(type=openapi.TYPE_STRING,description="Enter the email id for the vendor"),
+                'items': openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Items(type=openapi.TYPE_INTEGER),
+                    description="Enter id's for Items"
+                ),
+                "delivery_date":openapi.Schema(type=openapi.TYPE_STRING,description="Enter the date of delivery i.e. YYYY-MM-DD HH:MM:SS"),
+            }
+        ),
+        manual_parameters=[
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
+        ]
+    )
+    def post(self, request):
+        try:
+            input_data = request.data
+            vendor_user = Vendor_model.objects.get(user__email=input_data['vendor'])
+
+            input_data['delivery_date'] = datetime.strptime(input_data['delivery_date'], '%Y-%m-%d %H:%M:%S')
+
+            print(input_data['delivery_date'])
+
+            last_po_number = Purchase_order_model.objects.last().po_number if Purchase_order_model.objects.exists() else None
+        
+            if last_po_number:
+                last_po_number_numeric = int(re.search(r'\d+', last_po_number).group())
+                print("last_po_number_numeric",last_po_number_numeric)
+                group_po_number =re.search(r"^\D+", last_po_number).group()
+                next_po_number = f'{group_po_number}{last_po_number_numeric + 1}'
+                print("next_po_number",next_po_number)
+            else:
+                next_po_number = 'PO-1'
+                print("next_po_number",next_po_number)
+            
+
+            po_obj = Purchase_order_model.objects.create(po_number=next_po_number,vendor=vendor_user,delivery_date = input_data['delivery_date'],quantity=0)
+            total_po_quantity = 0
+            for item_id in input_data['items']:
+                try:
+                    iteam_obj = Items_model.objects.get(id=item_id)
+                    total_po_quantity += iteam_obj.quantity
+                    po_obj.items.add(iteam_obj)
+                except Items_model.DoesNotExist:
+                    return Response({'status': status.HTTP_201_CREATED, 'response': 'All Items are not be created'}, status=status.HTTP_201_CREATED)
+
+            print(total_po_quantity,"\n",po_obj)
+            po_obj.quantity = total_po_quantity
+            po_obj.save()
+
+            return Response({'status': status.HTTP_201_CREATED, 'response': 'Purchase order placed successfully'}, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Vendor_model.DoesNotExist:
+            return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': "vendor email is not valid, please check the email for vendor"}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+class GetallPurchaseOrder(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_description="Get all Item detail, Only Admin have this permission",
+        operation_summary="All Item Details",
+        tags=['Purchase'],
+        manual_parameters=[
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication"),
+            openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by email, first name, or last name (case-insensitive)")
+        ]
+    )
+    def get(self, request):
+        try:
+            search_query = request.query_params.get('search', '')
+
+            purchase_obj = Purchase_order_model.objects.all()
+            
+            if search_query:
+                purchase_obj = purchase_obj.filter(Q(name__icontains=search_query) | Q(price__icontains=search_query))
+
+            ser = PurchaseOrderSerializer(purchase_obj, many=True)
+            return Response({'status': status.HTTP_200_OK, 'response': ser.data}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class Get_ParticularPurchaseOrder(APIView):
+    authentication_classes=[JWTAuthentication]
+    permission_classes=[IsAuthenticated]
+    @swagger_auto_schema(
+        operation_description="Get particular Teacher detail, only a Principle or Admin can access this",
+        operation_summary="Principle Detail",
+        tags=['Purchase'],
+        manual_parameters=[
+            openapi.Parameter('po_number',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter po_number to get purchase order details"),
+            openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication")
+        ]
+    )
+    def get(self, request):
+        po_number = request.query_params.get('po_number')
+        try:
+            try:
+                po_obj = Purchase_order_model.objects.get(po_number=po_number)
+            except Exception as e:
+                return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': f'No purchase order not found by po_number {po_number}'}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+            ser = PurchaseOrderSerializer(po_obj)
+            
+            return Response({'status': status.HTTP_200_OK, 'response': ser.data}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+ 
+
+class DeleteItem(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+    @swagger_auto_schema(
+        operation_description="Delete purchase order",
+        operation_summary="Delete purchase order",
+        tags=['Purchase'],
+        manual_parameters=
+        [
+            openapi.Parameter('po_number',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter po_number to get purchase order details"),
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING),
+        ]
+    )
+    def delete(self,request):
+        po_number = request.query_params.get('po_number')
+        try:
+            po_obj = Purchase_order_model.objects.get(po_number=po_number)
+            po_obj.delete()
+            return Response({'status':status.HTTP_200_OK,"message": "Purchase order deleted"}, status=status.HTTP_200_OK)
+        except Items_model.DoesNotExist:
+            return Response({'status':status.HTTP_400_BAD_REQUEST,"message": f'No purchase order not found by po_number {po_number}'}, status=status.HTTP_404_NOT_FOUND)

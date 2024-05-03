@@ -72,24 +72,29 @@ class Items_model(models.Model):
     quantity = models.PositiveIntegerField()
     
     def __str__(self):
-        return {self.name}
+        return self.name
 
 class Purchase_order_model(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('completed', 'Completed'),
+        ('canceled', 'Canceled'),
+    ]
     po_number = models.CharField(unique=True,max_length=15)
     vendor = models.ForeignKey(Vendor_model,on_delete=models.CASCADE,related_name="purchase_vendor")
-    order_date = models.DateTimeField()
+    order_date = models.DateTimeField(auto_now_add=True)
     delivery_date = models.DateTimeField()
     items = models.ManyToManyField(Items_model,related_name="purchase_items")
     quantity = models.IntegerField()
-    status = models.CharField(max_length=50)
+    status = models.CharField(max_length=20,choices=STATUS_CHOICES, default='pending')
     quality_rating = models.FloatField(null=True)
-    issue_date = models.DateTimeField()
+    issue_date = models.DateTimeField(auto_now_add=True)
     acknowledgment_date = models.DateTimeField(null=True)
 
     def __str__(self):
         return f"{self.po_number} - {self.vendor.user.username}"
 
-class Performance_model(models.Model):
+class HistoricalPerformanceModel(models.Model):
     vendor = models.ForeignKey(Vendor_model,on_delete=models.CASCADE)
     date = models.DateTimeField()
     on_time_delivery_rate = models.FloatField()
