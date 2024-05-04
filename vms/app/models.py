@@ -53,19 +53,19 @@ class User_model(AbstractBaseUser,PermissionsMixin):
         return f"{self.username} - {self.user_role}"
 
 
-class Vendor_model(models.Model):
+class VendorModel(models.Model):
     user = models.OneToOneField(User_model,on_delete= models.CASCADE,related_name="vendor_user")
     contact_details = models.CharField(max_length=500,blank=True,null=True)
     code = models.CharField(max_length=15,unique=True)
-    on_time_delivery_rate = models.FloatField()
-    quality_rating_avg = models.FloatField()
-    average_response_time = models.FloatField()
-    fulfillment_rate = models.FloatField()
+    on_time_delivery_rate = models.FloatField(default=0)
+    quality_rating_avg = models.FloatField(default=0)
+    average_response_time = models.DateTimeField(blank=True,null=True)
+    fulfillment_rate = models.FloatField(default=0)
 
     def __str__(self):
         return f"{self.code} - {self.user.username}"
     
-class Items_model(models.Model):
+class ItemsModel(models.Model):
     name = models.CharField(max_length=100)
     description = models.TextField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -74,17 +74,18 @@ class Items_model(models.Model):
     def __str__(self):
         return self.name
 
-class Purchase_order_model(models.Model):
+class PurchaseOrderModel(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('completed', 'Completed'),
         ('canceled', 'Canceled'),
     ]
     po_number = models.CharField(unique=True,max_length=15)
-    vendor = models.ForeignKey(Vendor_model,on_delete=models.CASCADE,related_name="purchase_vendor")
+    vendor = models.ForeignKey(VendorModel,on_delete=models.CASCADE,related_name="purchase_vendor")
     order_date = models.DateTimeField(auto_now_add=True)
     delivery_date = models.DateTimeField()
-    items = models.ManyToManyField(Items_model,related_name="purchase_items")
+    actual_delivered_date = models.DateTimeField(blank = True,null=True)
+    items = models.ManyToManyField(ItemsModel,related_name="purchase_items")
     quantity = models.IntegerField()
     status = models.CharField(max_length=20,choices=STATUS_CHOICES, default='pending')
     quality_rating = models.FloatField(null=True)
@@ -95,7 +96,7 @@ class Purchase_order_model(models.Model):
         return f"{self.po_number} - {self.vendor.user.username}"
 
 class HistoricalPerformanceModel(models.Model):
-    vendor = models.ForeignKey(Vendor_model,on_delete=models.CASCADE)
+    vendor = models.ForeignKey(VendorModel,on_delete=models.CASCADE)
     date = models.DateTimeField()
     on_time_delivery_rate = models.FloatField()
     quality_rating_avg = models.FloatField()

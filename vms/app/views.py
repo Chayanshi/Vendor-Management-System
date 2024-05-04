@@ -71,6 +71,8 @@ class CreateUser(APIView):
                     input_data['is_superuser']=True
                     input_data['is_staff']=True
                 
+                input_data['user_role'] = input_data['user_role'].capitalize()
+
                 print("input_data",input_data)
                 serializers = UserSerializer(data=input_data)
                 if serializers.is_valid():
@@ -151,8 +153,8 @@ class UserLogin(APIView):
             type=openapi.TYPE_OBJECT,
             required=['email','password'],
             properties={
-                'email':openapi.Schema(type=openapi.TYPE_STRING,default="testing@mailinator.com"),
-                'password':openapi.Schema(type=openapi.TYPE_STRING,default="Tester@123")
+                'email':openapi.Schema(type=openapi.TYPE_STRING,default="vendor@mailinator.com"),
+                'password':openapi.Schema(type=openapi.TYPE_STRING,default="Vendor@123")
             }
         )
     )
@@ -409,7 +411,7 @@ class UpdateUser(APIView):
                         vendor_serializer = VendorSerializer(vendor_instance, data=vendor_data, partial=True)
                         if vendor_serializer.is_valid():
                             vendor_serializer.save()
-                    except Vendor_model.DoesNotExist:
+                    except VendorModel.DoesNotExist:
                         pass
                 
                 return Response({'status': status.HTTP_202_ACCEPTED, 'Response': "Updated successfully"}, status=status.HTTP_202_ACCEPTED)
@@ -573,8 +575,8 @@ class UpdateItem(APIView):
 
         try:
             try:
-                user = Items_model.objects.get(id=id)
-            except Items_model.DoesNotExist:
+                user = ItemsModel.objects.get(id=id)
+            except ItemsModel.DoesNotExist:
                 return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "Item not found"}, status=status.HTTP_400_BAD_REQUEST)
             
             input_data = request.data
@@ -608,10 +610,10 @@ class DeleteItem(APIView):
     def delete(self,request):
         id = request.query_params.get('id')
         try:
-            user = Items_model.objects.get(id=id)
+            user = ItemsModel.objects.get(id=id)
             user.delete()
             return Response({'status':status.HTTP_200_OK,"message": "Item deleted"}, status=status.HTTP_200_OK)
-        except Items_model.DoesNotExist:
+        except ItemsModel.DoesNotExist:
             return Response({'status':status.HTTP_400_BAD_REQUEST,"message": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
 
 class GetallItem(APIView):
@@ -631,7 +633,7 @@ class GetallItem(APIView):
         try:
             search_query = request.query_params.get('search', '')
 
-            item_obj = Items_model.objects.all()
+            item_obj = ItemsModel.objects.all()
             
             if search_query:
                 item_obj = item_obj.filter(Q(name__icontains=search_query) | Q(price__icontains=search_query))
@@ -657,7 +659,7 @@ class Get_ParticularItem(APIView):
         id = request.query_params.get('id')
         try:
             try:
-                item = Items_model.objects.get(id=id)
+                item = ItemsModel.objects.get(id=id)
             except Exception as e:
                 return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': 'Item not found'}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -699,13 +701,13 @@ class Create_PurchaseOrder(APIView):
     def post(self, request):
         try:
             input_data = request.data
-            vendor_user = Vendor_model.objects.get(user__email=input_data['vendor'])
+            vendor_user = VendorModel.objects.get(user__email=input_data['vendor'])
 
             input_data['delivery_date'] = datetime.strptime(input_data['delivery_date'], '%Y-%m-%d %H:%M:%S')
 
             print(input_data['delivery_date'])
 
-            last_po_number = Purchase_order_model.objects.last().po_number if Purchase_order_model.objects.exists() else None
+            last_po_number = PurchaseOrderModel.objects.last().po_number if PurchaseOrderModel.objects.exists() else None
         
             if last_po_number:
                 last_po_number_numeric = int(re.search(r'\d+', last_po_number).group())
@@ -718,25 +720,25 @@ class Create_PurchaseOrder(APIView):
                 print("next_po_number",next_po_number)
             
 
-            po_obj = Purchase_order_model.objects.create(po_number=next_po_number,vendor=vendor_user,delivery_date = input_data['delivery_date'],quantity=0)
+            po_obj = PurchaseOrderModel.objects.create(po_number=next_po_number,vendor=vendor_user,delivery_date = input_data['delivery_date'],quantity=0)
             total_po_quantity = 0
             for item_id in input_data['items']:
                 try:
-                    iteam_obj = Items_model.objects.get(id=item_id)
+                    iteam_obj = ItemsModel.objects.get(id=item_id)
                     total_po_quantity += iteam_obj.quantity
                     po_obj.items.add(iteam_obj)
-                except Items_model.DoesNotExist:
+                except ItemsModel.DoesNotExist:
                     return Response({'status': status.HTTP_201_CREATED, 'response': 'All Items are not be created'}, status=status.HTTP_201_CREATED)
 
             print(total_po_quantity,"\n",po_obj)
             po_obj.quantity = total_po_quantity
             po_obj.save()
 
-            return Response({'status': status.HTTP_201_CREATED, 'response': 'Purchase order placed successfully'}, status=status.HTTP_201_CREATED)
+            return Response({'status': status.HTTP_201_CREATED, 'response': 'Purchase order placed successfully','po_number':po_obj.po_number}, status=status.HTTP_201_CREATED)
 
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        except Vendor_model.DoesNotExist:
+        except VendorModel.DoesNotExist:
             return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': "vendor email is not valid, please check the email for vendor"}, status=status.HTTP_400_BAD_REQUEST)
         
 
@@ -757,7 +759,7 @@ class GetallPurchaseOrder(APIView):
         try:
             search_query = request.query_params.get('search', '')
 
-            purchase_obj = Purchase_order_model.objects.all()
+            purchase_obj = PurchaseOrderModel.objects.all()
             
             if search_query:
                 purchase_obj = purchase_obj.filter(Q(name__icontains=search_query) | Q(price__icontains=search_query))
@@ -766,7 +768,6 @@ class GetallPurchaseOrder(APIView):
             return Response({'status': status.HTTP_200_OK, 'response': ser.data}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 class Get_ParticularPurchaseOrder(APIView):
     authentication_classes=[JWTAuthentication]
@@ -784,7 +785,7 @@ class Get_ParticularPurchaseOrder(APIView):
         po_number = request.query_params.get('po_number')
         try:
             try:
-                po_obj = Purchase_order_model.objects.get(po_number=po_number)
+                po_obj = PurchaseOrderModel.objects.get(po_number=po_number)
             except Exception as e:
                 return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': f'No purchase order not found by po_number {po_number}'}, status=status.HTTP_400_BAD_REQUEST)
         
@@ -796,6 +797,118 @@ class Get_ParticularPurchaseOrder(APIView):
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
  
+class UpdatePurchaseOrder(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Update purchase order status",
+        operation_summary="User Update",
+        tags=['Purchase'],
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=[],
+            properties={
+                'status':openapi.Schema(type=openapi.TYPE_STRING,description="The status wil be completed,pending or canceled"),
+                'quality_rating':openapi.Schema(type=openapi.TYPE_NUMBER),
+                # 'items': openapi.Schema(
+                #     type=openapi.TYPE_ARRAY,
+                #     items=openapi.Items(type=openapi.TYPE_INTEGER),
+                #     description="Enter id's for Items"
+                # ),
+                "delivery_date":openapi.Schema(type=openapi.TYPE_STRING,description="Enter the date of delivery i.e. YYYY-MM-DD HH:MM:SS"),
+                "issue_date":openapi.Schema(type=openapi.TYPE_STRING,description="Enter the date of issue to vendor i.e. YYYY-MM-DD HH:MM:SS"),
+                "actual_delivered_date":openapi.Schema(type=openapi.TYPE_STRING,description="Enter the actual_delivered_date of issue to vendor i.e. YYYY-MM-DD HH:MM:SS"),
+            }
+        ),
+        manual_parameters=[
+            openapi.Parameter('po_number', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Enter po_number of purchase item"),
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
+        ]
+    )
+    def put(self, request):
+        po_number = request.query_params.get('po_number')
+
+        try:
+            try:
+                po_obj = PurchaseOrderModel.objects.get(po_number=po_number)
+            except PurchaseOrderModel.DoesNotExist:
+                return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': f"Order not found by po_number {po_number}"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            input_data = request.data
+            print(input_data)
+            if input_data['status']:
+                input_data['status'] = input_data['status'].lower()
+            
+            # Update user data
+            ser = PurchaseOrderSerializer(po_obj, data=input_data, partial=True)
+            if ser.is_valid():
+                ser.save()
+                
+                return Response({'status': status.HTTP_202_ACCEPTED, 'Response': "Updated successfully"}, status=status.HTTP_202_ACCEPTED)
+            return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "Can't update data", "error": ser.errors},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class AcknowledgePurchaseOrder(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Update purchase order status",
+        operation_summary="User Update",
+        tags=['Purchase'],
+        manual_parameters=[
+            # openapi.Parameter('po_id', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Enter po_id of purchase item"),
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
+        ]
+    )
+    def post(self,request,id):
+        try:
+            # po_id = request.query_params.get()
+            # print("id",po_id)
+            purchase_order = PurchaseOrderModel.objects.get(id=int(id))
+
+            # Update acknowledgment_date to current timestamp
+            purchase_order.acknowledgment_date = datetime.now()
+            purchase_order.save()
+
+            # Recalculate average_response_time for the vendor
+            vendor = purchase_order.vendor
+            total_response_time = 0
+            acknowledged_orders = PurchaseOrderModel.objects.filter(
+                vendor=vendor, acknowledgment_date__isnull=False
+            )
+
+            for order in acknowledged_orders:
+                response_time = order.acknowledgment_date - order.issue_date
+                print("response_time",response_time)
+                total_response_time += response_time.total_seconds()
+            
+            print("total_response_time",total_response_time)
+            average_response_time = total_response_time / acknowledged_orders.count()
+            print("average_response_time",average_response_time)
+
+            average_response_timedelta = timezone.timedelta(seconds=average_response_time)
+
+            # Format the timedelta as HH:MM:SS
+            average_response_formatted = str(average_response_timedelta)
+
+            # If you want to remove microseconds from the formatted string
+            average_response_formatted = average_response_formatted.split('.')[0]
+
+            print("Average Response Time:", average_response_formatted)
+            vendor.average_response_time = average_response_formatted
+            vendor.save()
+
+            return Response({'status': status.HTTP_200_OK, 'message': 'Purchase order acknowledged successfully'}, status=status.HTTP_200_OK)
+
+        except PurchaseOrderModel.DoesNotExist:
+            return Response({'status': status.HTTP_404_NOT_FOUND, 'message': 'Purchase order not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class DeleteItem(APIView):
     authentication_classes = [JWTAuthentication]
@@ -813,8 +926,8 @@ class DeleteItem(APIView):
     def delete(self,request):
         po_number = request.query_params.get('po_number')
         try:
-            po_obj = Purchase_order_model.objects.get(po_number=po_number)
+            po_obj = PurchaseOrderModel.objects.get(po_number=po_number)
             po_obj.delete()
             return Response({'status':status.HTTP_200_OK,"message": "Purchase order deleted"}, status=status.HTTP_200_OK)
-        except Items_model.DoesNotExist:
+        except ItemsModel.DoesNotExist:
             return Response({'status':status.HTTP_400_BAD_REQUEST,"message": f'No purchase order not found by po_number {po_number}'}, status=status.HTTP_404_NOT_FOUND)
