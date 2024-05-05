@@ -86,7 +86,7 @@ class CreateUser(APIView):
                 if serializers.is_valid():
                     serializers.save()
 
-                    return Response({'status':status.HTTP_201_CREATED,'response':'User creared successfully',"user_id":serializers.data..get("id")},status=status.HTTP_201_CREATED)
+                    return Response({'status':status.HTTP_201_CREATED,'response':'User creared successfully',"user_id":serializers.data.get("id")},status=status.HTTP_201_CREATED)
                 return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'User can not be created','error':serializers.errors},status=status.HTTP_400_BAD_REQUEST)
             return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'Password must contain a upper letter, lower letter, number and a special character'},status=status.HTTP_400_BAD_REQUEST)
             
