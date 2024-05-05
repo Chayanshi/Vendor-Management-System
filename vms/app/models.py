@@ -59,7 +59,7 @@ class VendorModel(models.Model):
     code = models.CharField(max_length=15,unique=True)
     on_time_delivery_rate = models.FloatField(default=0)
     quality_rating_avg = models.FloatField(default=0)
-    average_response_time = models.DateTimeField(blank=True,null=True)
+    average_response_time = models.TimeField(blank=True,null=True,default=None)
     fulfillment_rate = models.FloatField(default=0)
 
     def __str__(self):
@@ -97,11 +97,12 @@ class PurchaseOrderModel(models.Model):
 
 class HistoricalPerformanceModel(models.Model):
     vendor = models.ForeignKey(VendorModel,on_delete=models.CASCADE)
-    date = models.DateTimeField()
-    on_time_delivery_rate = models.FloatField()
-    quality_rating_avg = models.FloatField()
-    average_response_time = models.FloatField()
-    fulfillment_rate = models.FloatField()
+    from_date = models.DateTimeField(blank=True,null=True)
+    to_date = models.DateTimeField(blank=True,null=True)
+    on_time_delivery_rate = models.FloatField(default=0)
+    quality_rating_avg = models.FloatField(default=0)
+    average_response_time = models.FloatField(default=0)
+    fulfillment_rate = models.FloatField(default=0)
 
     def __str__(self):
         return f"{self.vendor.user.username} - {self.date}"

@@ -18,6 +18,13 @@ from .email import *
 from django.db.models import Q
 # Create your views here.
 
+#Task to remaining
+# 1. optimize code and apis endpoints
+# 2. add document comment for all apis 
+# 3. remove one-line comments and add to next line
+# 4. remove unnecessary prints
+
+
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
 
@@ -63,9 +70,9 @@ class CreateUser(APIView):
             
             if re.match(password_pattern, input_data['password']):
                 print("input_data['password']",input_data['password'])
-                # password = make_password(input_data['password'])
+                password = make_password(input_data['password'])
                 
-                # input_data['password'] = password
+                input_data['password'] = password
                 if input_data['user_role'].lower() =='admin':
                     print("admin created")
                     input_data['is_superuser']=True
@@ -75,15 +82,16 @@ class CreateUser(APIView):
 
                 print("input_data",input_data)
                 serializers = UserSerializer(data=input_data)
+                print("serializer response",serializers)
                 if serializers.is_valid():
                     serializers.save()
 
-                    return Response({'status':status.HTTP_201_CREATED,'response':'User creared successfully'},status=status.HTTP_201_CREATED)
+                    return Response({'status':status.HTTP_201_CREATED,'response':'User creared successfully',"user_id":serializers.data..get("id")},status=status.HTTP_201_CREATED)
                 return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'User can not be created','error':serializers.errors},status=status.HTTP_400_BAD_REQUEST)
             return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'Password must contain a upper letter, lower letter, number and a special character'},status=status.HTTP_400_BAD_REQUEST)
             
         except Exception as e:
-            return Response({'status':status.HTTP_500_INTERNAL_SERVER_ERROR,'response':e},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 #API to create vendor
 class CreateVendor(APIView):
@@ -135,7 +143,7 @@ class CreateVendor(APIView):
                     if serializers.is_valid():
                         serializers.save(password=password)
 
-                        return Response({'status':status.HTTP_201_CREATED,'response':'Vendor creared successfully'},status=status.HTTP_201_CREATED)
+                        return Response({'status':status.HTTP_201_CREATED,'response':'Vendor creared successfully',"vendor_id":serializers.data.get("id")},status=status.HTTP_201_CREATED)
                     return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'Vendor can not be created','error':serializers.errors},status=status.HTTP_400_BAD_REQUEST)
                 return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'Password must contain a capital letter, lower letter, number and a special character'},status=status.HTTP_400_BAD_REQUEST)
             return Response({'status':status.HTTP_400_BAD_REQUEST,'response':"You don't have authentication to create a vendor. Only a admin can create a Vendor"},status=status.HTTP_400_BAD_REQUEST)
@@ -507,7 +515,6 @@ class Get_ParticularUser(APIView):
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
  
-
 #API's from Items
 class CreateItem(APIView):
     authentication_classes = [JWTAuthentication]
@@ -541,7 +548,7 @@ class CreateItem(APIView):
             if serializers.is_valid():
                 serializers.save()
 
-                return Response({'status':status.HTTP_201_CREATED,'response':'Item created successfully'},status=status.HTTP_201_CREATED)
+                return Response({'status':status.HTTP_201_CREATED,'response':'Item created successfully',"item_id":serializers.data.get("id")},status=status.HTTP_201_CREATED)
             return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'Item can not be created','error':serializers.errors},status=status.HTTP_400_BAD_REQUEST)
             
         except Exception as e:
@@ -673,6 +680,8 @@ class Get_ParticularItem(APIView):
  
 
 #API's for Purchase Order
+
+# Have to add serializer to create purchase order
 class Create_PurchaseOrder(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -728,7 +737,7 @@ class Create_PurchaseOrder(APIView):
                     total_po_quantity += iteam_obj.quantity
                     po_obj.items.add(iteam_obj)
                 except ItemsModel.DoesNotExist:
-                    return Response({'status': status.HTTP_201_CREATED, 'response': 'All Items are not be created'}, status=status.HTTP_201_CREATED)
+                    return Response({'status': status.HTTP_201_CREATED, 'response': 'All Items are not be created',"item_id":item_id}, status=status.HTTP_201_CREATED)
 
             print(total_po_quantity,"\n",po_obj)
             po_obj.quantity = total_po_quantity
@@ -741,7 +750,6 @@ class Create_PurchaseOrder(APIView):
         except VendorModel.DoesNotExist:
             return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': "vendor email is not valid, please check the email for vendor"}, status=status.HTTP_400_BAD_REQUEST)
         
-
 class GetallPurchaseOrder(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -796,7 +804,7 @@ class Get_ParticularPurchaseOrder(APIView):
 
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
- 
+
 class UpdatePurchaseOrder(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
@@ -809,16 +817,11 @@ class UpdatePurchaseOrder(APIView):
             type=openapi.TYPE_OBJECT,
             required=[],
             properties={
-                'status':openapi.Schema(type=openapi.TYPE_STRING,description="The status wil be completed,pending or canceled"),
+                'status':openapi.Schema(type=openapi.TYPE_STRING,description="The status wil be completed, pending, or canceled"),
                 'quality_rating':openapi.Schema(type=openapi.TYPE_NUMBER),
-                # 'items': openapi.Schema(
-                #     type=openapi.TYPE_ARRAY,
-                #     items=openapi.Items(type=openapi.TYPE_INTEGER),
-                #     description="Enter id's for Items"
-                # ),
-                "delivery_date":openapi.Schema(type=openapi.TYPE_STRING,description="Enter the date of delivery i.e. YYYY-MM-DD HH:MM:SS"),
-                "issue_date":openapi.Schema(type=openapi.TYPE_STRING,description="Enter the date of issue to vendor i.e. YYYY-MM-DD HH:MM:SS"),
-                "actual_delivered_date":openapi.Schema(type=openapi.TYPE_STRING,description="Enter the actual_delivered_date of issue to vendor i.e. YYYY-MM-DD HH:MM:SS"),
+                'delivery_date':openapi.Schema(type=openapi.TYPE_STRING,description="Enter the date of delivery i.e. YYYY-MM-DD HH:MM:SS"),
+                'issue_date':openapi.Schema(type=openapi.TYPE_STRING,description="Enter the date of issue to vendor i.e. YYYY-MM-DD HH:MM:SS"),
+                'actual_delivered_date':openapi.Schema(type=openapi.TYPE_STRING,description="Enter the actual delivered date of issue to vendor i.e. YYYY-MM-DD HH:MM:SS"),
             }
         ),
         manual_parameters=[
@@ -830,87 +833,21 @@ class UpdatePurchaseOrder(APIView):
         po_number = request.query_params.get('po_number')
 
         try:
-            try:
-                po_obj = PurchaseOrderModel.objects.get(po_number=po_number)
-            except PurchaseOrderModel.DoesNotExist:
-                return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': f"Order not found by po_number {po_number}"}, status=status.HTTP_400_BAD_REQUEST)
-            
-            input_data = request.data
-            print(input_data)
-            if input_data['status']:
-                input_data['status'] = input_data['status'].lower()
-            
-            # Update user data
-            ser = PurchaseOrderSerializer(po_obj, data=input_data, partial=True)
-            if ser.is_valid():
-                ser.save()
-                
-                return Response({'status': status.HTTP_202_ACCEPTED, 'Response': "Updated successfully"}, status=status.HTTP_202_ACCEPTED)
-            return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "Can't update data", "error": ser.errors},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        except Exception as e:
-            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-class AcknowledgePurchaseOrder(APIView):
-    authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticated]
-
-    @swagger_auto_schema(
-        operation_description="Update purchase order status",
-        operation_summary="User Update",
-        tags=['Purchase'],
-        manual_parameters=[
-            # openapi.Parameter('po_id', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Enter po_id of purchase item"),
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
-        ]
-    )
-    def post(self,request,id):
-        try:
-            # po_id = request.query_params.get()
-            # print("id",po_id)
-            purchase_order = PurchaseOrderModel.objects.get(id=int(id))
-
-            # Update acknowledgment_date to current timestamp
-            purchase_order.acknowledgment_date = datetime.now()
-            purchase_order.save()
-
-            # Recalculate average_response_time for the vendor
-            vendor = purchase_order.vendor
-            total_response_time = 0
-            acknowledged_orders = PurchaseOrderModel.objects.filter(
-                vendor=vendor, acknowledgment_date__isnull=False
-            )
-
-            for order in acknowledged_orders:
-                response_time = order.acknowledgment_date - order.issue_date
-                print("response_time",response_time)
-                total_response_time += response_time.total_seconds()
-            
-            print("total_response_time",total_response_time)
-            average_response_time = total_response_time / acknowledged_orders.count()
-            print("average_response_time",average_response_time)
-
-            average_response_timedelta = timezone.timedelta(seconds=average_response_time)
-
-            # Format the timedelta as HH:MM:SS
-            average_response_formatted = str(average_response_timedelta)
-
-            # If you want to remove microseconds from the formatted string
-            average_response_formatted = average_response_formatted.split('.')[0]
-
-            print("Average Response Time:", average_response_formatted)
-            vendor.average_response_time = average_response_formatted
-            vendor.save()
-
-            return Response({'status': status.HTTP_200_OK, 'message': 'Purchase order acknowledged successfully'}, status=status.HTTP_200_OK)
-
+            po_obj = PurchaseOrderModel.objects.get(po_number=po_number)
         except PurchaseOrderModel.DoesNotExist:
-            return Response({'status': status.HTTP_404_NOT_FOUND, 'message': 'Purchase order not found'}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': f"Order not found by po_number {po_number}"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        input_data = request.data
+        if input_data.get('status'):
+            input_data['status'] = input_data['status'].lower()
+        
+        serializer = PurchaseOrderSerializer(po_obj, data=input_data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'status': status.HTTP_202_ACCEPTED, 'Response': "Updated successfully"}, status=status.HTTP_202_ACCEPTED)
+        return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "Can't update data", "error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
-class DeleteItem(APIView):
+class DeletePurchaseOrder(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     @swagger_auto_schema(
@@ -931,3 +868,63 @@ class DeleteItem(APIView):
             return Response({'status':status.HTTP_200_OK,"message": "Purchase order deleted"}, status=status.HTTP_200_OK)
         except ItemsModel.DoesNotExist:
             return Response({'status':status.HTTP_400_BAD_REQUEST,"message": f'No purchase order not found by po_number {po_number}'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class AcknowledgePurchaseOrder(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Update purchase order status",
+        operation_summary="User Update",
+        tags=['Purchase'],
+        manual_parameters=[
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
+        ]
+    )
+    def post(self,request,po_number):
+        try:
+            purchase_order = PurchaseOrderModel.objects.get(po_number=po_number)
+
+            now = datetime.now()
+            print('now.strftime("%Y-%m-%d %H:%M:%S")',now.strftime("%Y-%m-%d %H:%M:%S"))
+            purchase_order.acknowledgment_date = now.strftime("%Y-%m-%d %H:%M:%S")
+            purchase_order.save()
+
+            return Response({'status': status.HTTP_200_OK, 'message': 'Purchase order acknowledged successfully'}, status=status.HTTP_200_OK)
+
+        except PurchaseOrderModel.DoesNotExist:
+            return Response({'status': status.HTTP_404_NOT_FOUND, 'message': 'Purchase order not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class Get_VendorPerformance(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Get vendor performance by vendor code",
+        operation_summary="Get a vendor performance",
+        tags=['Vendor'],
+        manual_parameters=[
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
+        ]
+    )
+    def get(self,request,code):
+        try:
+            vendor_instance = VendorModel.objects.get(code=str(code))
+
+            data = {
+                "on_time_delivery_rate":vendor_instance.on_time_delivery_rate,
+                "quality_rating_avg":vendor_instance.quality_rating_avg,
+                "average_response_time":vendor_instance.average_response_time,
+                "fulfillment_rate":vendor_instance.fulfillment_rate
+            }
+
+            return Response({'status':status.HTTP_200_OK,"vendor_code":code,"response":data},status=status.HTTP_200_OK)
+        except VendorModel.DoesNotExist:
+            return Response({'status': status.HTTP_404_NOT_FOUND, 'message': 'Vendor not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
