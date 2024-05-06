@@ -16,13 +16,6 @@ from datetime import datetime
 from django.utils import timezone
 from .email import *
 from django.db.models import Q
-# Create your views here.
-
-#Task to remaining
-# 1. optimize code and apis endpoints
-# 2. add document comment for all apis 
-# 3. remove one-line comments and add to next line
-# 4. remove unnecessary prints
 
 
 def get_tokens_for_user(user):
@@ -37,12 +30,9 @@ def get_random_otp():
     randomotp = random.randint(0000, 9999)
     return randomotp 
 
-
-#API to create a user with roles and details
 class CreateUser(APIView):
    @swagger_auto_schema(
-        operation_description="You can create a user as per roles like admin, vendor and user",
-        operation_summary="Create User as per required fields",
+        operation_summary="Create user with specified roles like admin, vendor, or user",
         tags=['Admin'],
         request_body=openapi.Schema(
                 type=openapi.TYPE_OBJECT,
@@ -57,6 +47,11 @@ class CreateUser(APIView):
                     'contact_details':openapi.Schema(type=openapi.TYPE_STRING,description="Any other relevant contact information"),
                 }
             ),
+        responses={
+            201: "Created successfully",
+            400: "Bad request",
+            500: "Internal server error",
+        }
     )
    def post(self,request):
         password_pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@#$%^&+=!]).{8,}$"
@@ -93,13 +88,11 @@ class CreateUser(APIView):
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-#API to create vendor
 class CreateVendor(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     @swagger_auto_schema(
-            operation_description="You can create a user as per roles like admin, vendor and user. Only a admin can create vendor",
-            operation_summary="Create User as per required details",
+            operation_summary="Create Vendor as per required details, only a admin can create vendor",
             tags=['Vendor'],
             request_body=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
@@ -114,8 +107,14 @@ class CreateVendor(APIView):
                     }
                 ),
                 manual_parameters=[
-                openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
-            ]
+                openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING,default='Bearer ', description="access token for Authentication")
+            ],
+            responses={
+                201: "Created successfully",
+                400: "Bad request",
+                401: "Unauthorized",
+                500: "Internal server error",
+            }
         )
     def post(self,request):
         password_pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@#$%^&+=!]).{8,}$"
@@ -151,11 +150,9 @@ class CreateVendor(APIView):
         except Exception as e:
             return Response({'status':status.HTTP_500_INTERNAL_SERVER_ERROR,'response':e},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-#UserLogin     
 class UserLogin(APIView):
     @swagger_auto_schema(
-        operation_description="Fill details to login",
-        operation_summary="User Login",
+        operation_summary="Login to your account using email and password for authentication adn get access token",
         tags=['Admin','Vendor'],
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
@@ -164,7 +161,13 @@ class UserLogin(APIView):
                 'email':openapi.Schema(type=openapi.TYPE_STRING,default="vendor@mailinator.com"),
                 'password':openapi.Schema(type=openapi.TYPE_STRING,default="Vendor@123")
             }
-        )
+        ),
+        responses={
+            201: "Created successfully",
+            400: "Bad request",
+            404: "Unauthorized, when user is blocked",
+            500: "Internal server error"
+        }
     )
     def post(self,request):
         try:
@@ -172,55 +175,65 @@ class UserLogin(APIView):
             password=request.data.get('password')
 
             user = User_model.objects.get(email=email)
-            # Debugging: Print hashed password retrieved from the database
-            print("Hashed Password from Database:", user.password)
-
-            # Debugging: Print provided password and hashed password comparison result
-            print("Provided Password:", password)
-            print("Password Comparison Result:", check_password(password, user.password))
 
             user = authenticate(request, email=email, password=password)
             if user.is_block == False and user is not None :
                 if check_password(password,user.password): 
                     token=get_tokens_for_user(user)
                     request.session['access_token'] = token
-                    request.session.save()    
+                    request.session.save()
+                    user.is_active = True    
                     login(request,user)
                     return Response({'status':status.HTTP_202_ACCEPTED,'response':'Logged In successfull','access_token':token},status=status.HTTP_202_ACCEPTED)
                 return Response({'status':status.HTTP_400_BAD_REQUEST,'response':'Password is incorrect'},status=status.HTTP_400_BAD_REQUEST)
             return Response({'status':status.HTTP_401_UNAUTHORIZED,"response":"User account is blocked"},status=status.HTTP_401_UNAUTHORIZED)
-            
+
+        except User_model.DoesNotExist :
+            print("error in doesnot exist",str(e))
+            return Response({'status':status.HTTP_404_NOT_FOUND,'response':'User not found, check you email'},status=status.HTTP_404_NOT_FOUND)
+
         except Exception as e:
-            return Response({'status':status.HTTP_404_NOT_FOUND,'response':'User not found, check you email',"error":str(e)},status=status.HTTP_404_NOT_FOUND)
+            return Response({'status':status.HTTP_500_INTERNAL_SERVER_ERROR,"error":str(e)},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class UserLogout(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     @swagger_auto_schema(
-        operation_description="Retrieve user profile data by ID",
-        operation_summary="logout user by id",
+        operation_summary="User logout using auth token",
         tags=['Admin','Vendor'],
         manual_parameters=[
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING),
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING,default='Bearer '),
         ],
+        response = {
+            200: "Logout successfully",
+            401: "Unauthorized",
+            400: "Bad request. User not found",
+            500: "Internal server error"
+        }
     )
-    def get(self,request,id):
-            try:
-                user = User_model.objects.get(id=id)
-                user2=request.user
-                logout(request)
-                return Response({'status':status.HTTP_200_OK,'Response':'logout successfuly'},status.HTTP_200_OK)
-            except User_model.DoesNotExist:
-                return Response({'status':status.HTTP_400_BAD_REQUEST,'Response':'user not found'},status.HTTP_400_BAD_REQUEST)
+    def get(self,request):
+        try:
+            user=request.user
+            user.is_active = False
+            logout(request)
+            return Response({'status':status.HTTP_200_OK,'Response':'logout successfuly'},status.HTTP_200_OK)
+        except User_model.DoesNotExist:
+            return Response({'status':status.HTTP_400_BAD_REQUEST,'Response':'user not found'},status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'status':status.HTTP_500_INTERNAL_SERVER_ERROR,"error":str(e)},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class SendOTP(APIView):
     @swagger_auto_schema(
-        operation_description="enter your account detail to get verification email",
-        operation_summary="Send email",
+        operation_summary="To get verification otp on email.",
         tags=['Forgot Password'],
         manual_parameters=[
             openapi.Parameter('email',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter email to get verification otp")
-        ]
+        ],
+        responses={
+            200:"OTP sended succesfully",
+            404:"User not found by given email",
+            500:"Internal server error"
+        }
     )
     def get(self, request):
         email = request.query_params.get('email')
@@ -228,18 +241,16 @@ class SendOTP(APIView):
             try:
                 user = User_model.objects.get(email=email)
             except Exception as e:
-                return Response({'status':status.HTTP_400_BAD_REQUEST,'Response':"User not found"},status=status.HTTP_400_BAD_REQUEST)
+                return Response({'status':status.HTTP_404_NOT_FOUND,'Response':"User not found"},status=status.HTTP_404_NOT_FOUND)
             
             otp=get_random_otp()
             print(otp)
             sendotp(otp=otp,email=email)
             user.otp = otp
             user.save()
-            # if email_result == 1:
             return Response({'status':status.HTTP_200_OK,'Response':"Check your email for otp"},status=status.HTTP_200_OK)
-            # return Response({'status':status.HTTP_404_NOT_FOUND,'Response':"OTP can't be sended on this email"},status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            return Response({'status':status.HTTP_400_BAD_REQUEST,"error":str(e)},status=status.HTTP_400_BAD_REQUEST)
+            return Response({'status':status.HTTP_500_INTERNAL_SERVER_ERROR,"error":str(e)},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class VerifyOTP(APIView):
     @swagger_auto_schema(
@@ -249,7 +260,13 @@ class VerifyOTP(APIView):
         manual_parameters=[
             openapi.Parameter('email',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter email to get verification otp"),
             openapi.Parameter('OTP',openapi.IN_QUERY,type=openapi.TYPE_INTEGER,description="Enter verification otp, sended on your email")
-        ]
+        ],
+        response={
+            200:"Successfully verified email with OTP",
+            400:"Bad request",
+            404:"User not found by given email",
+            500:"Internal server error"
+        }
     )
     
     def get(self, request):
@@ -259,7 +276,7 @@ class VerifyOTP(APIView):
             try:
                 user = User_model.objects.get(email=email)
             except Exception as e:
-                return Response({'status':status.HTTP_400_BAD_REQUEST,'Response':"email not found"},status=status.HTTP_400_BAD_REQUEST)
+                return Response({'status':status.HTTP_404_NOT_FOUND,'Response':"email not found"},status=status.HTTP_404_NOT_FOUND)
             
             print('db',user.otp)
             print('user',entered_otp)
@@ -268,9 +285,9 @@ class VerifyOTP(APIView):
                 user.otp_verified = True
                 user.save()
                 return Response({'status':status.HTTP_200_OK,'Response':"Otp Verified"},status=status.HTTP_200_OK)
-            return Response({'status':status.HTTP_404_NOT_FOUND,'Response':"OTP is not valid, the OTP Valid period is 2 min"},status=status.HTTP_404_NOT_FOUND)
+            return Response({'status':status.HTTP_400_BAD_REQUEST,'Response':"OTP is not valid, the OTP Valid period is 2 min"},status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response({'status':status.HTTP_400_BAD_REQUEST,"error":str(e)},status=status.HTTP_400_BAD_REQUEST)
+            return Response({'status':status.HTTP_500_INTERNAL_SERVER_ERROR,"error":str(e)},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                
 class ForgotPassword(APIView):
     @swagger_auto_schema(
@@ -289,7 +306,13 @@ class ForgotPassword(APIView):
         manual_parameters=[
             openapi.Parameter('email',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter email to get verification otp"),
            
-        ]
+        ],
+        response={
+            200:"Successfully verified email with OTP",
+            400:"Bad request",
+            404:"User not found by given email",
+            500:"Internal server error"
+        }
     )
     def put(self,request):
         password_pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@#$%^&+=!]).{8,}$"
@@ -298,7 +321,7 @@ class ForgotPassword(APIView):
             try:
                 user = User_model.objects.get(email=email)
             except Exception as e:
-                return Response({'status':status.HTTP_400_BAD_REQUEST,'Response':"email not found"},status=status.HTTP_400_BAD_REQUEST)
+                return Response({'status':status.HTTP_404_NOT_FOUND,'Response':"email not found"},status=status.HTTP_404_NOT_FOUND)
             
             if not user.otp_verified:
                 return Response({'status':status.HTTP_400_BAD_REQUEST,'Response':"Verify email to change password"},status=status.HTTP_400_BAD_REQUEST)
@@ -316,14 +339,13 @@ class ForgotPassword(APIView):
             
         
         except Exception as e:
-            return Response({'status':status.HTTP_400_BAD_REQUEST,"error":str(e)},status=status.HTTP_400_BAD_REQUEST)
+            return Response({'status':status.HTTP_500_INTERNAL_SERVER_ERROR,"error":str(e)},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ChangePassword(APIView):
     authentication_classes=[JWTAuthentication]
     permission_classes=[IsAuthenticated]
     @swagger_auto_schema(
-        operation_description="Have to verify email with otp, then change the password.",
-        operation_summary="Change password",
+        operation_summary="After email verification with email user can change the password",
         tags=['Change Password'],
         request_body=openapi.Schema(
                 type=openapi.TYPE_OBJECT,
@@ -336,19 +358,26 @@ class ChangePassword(APIView):
             ),
         
         manual_parameters=[
-            # openapi.Parameter('email',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter email to get verification otp"),
-            openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication")
-        ]
+            openapi.Parameter('email',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter email for whose password is getting changed"),
+            openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication",default="Bearer ")
+        ],
+        response={
+            200:"Succesfully changed password",
+            400:"Bad request",
+            401: "Unauthorized",
+            404:"User not found by given email",
+            500:"Internal server error"
+        }
     )
     def put(self,request):
         password_pattern = r"^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@#$%^&+=!]).{8,}$"
-        # email = request.query_params.get('email')
-        email = request.user
+        email = request.query_params.get('email')
+        # email = request.user
         try:
             try:
                 user = User_model.objects.get(email=email)
             except Exception as e:
-                return Response({'status':status.HTTP_400_BAD_REQUEST,'Response':"email not found"},status=status.HTTP_400_BAD_REQUEST)
+                return Response({'status':status.HTTP_404_NOT_FOUND,'Response':"email not found"},status=status.HTTP_404_NOT_FOUND)
              
             input = request.data
             print(input['new_password'])
@@ -365,16 +394,14 @@ class ChangePassword(APIView):
             
         
         except Exception as e:
-            return Response({'status':status.HTTP_400_BAD_REQUEST,"error":str(e)},status=status.HTTP_400_BAD_REQUEST)
+            return Response({'status':status.HTTP_500_INTERNAL_SERVER_ERROR,"error":str(e)},status=status.HTTP_500_INTERNAL_SERVER_ERROR)
          
-#Update User
 class UpdateUser(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_description="Update User details",
-        operation_summary="User Update",
+        operation_summary="Update user details",
         tags=['Admin','Vendor'],
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
@@ -388,8 +415,15 @@ class UpdateUser(APIView):
         ),
         manual_parameters=[
             openapi.Parameter('email', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Enter email to get verification otp"),
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
-        ]
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer ")
+        ],
+        responses={
+            202: "Updated data successfully",
+            400: "Bad request",
+            401: "Unauthorized",
+            404: "User not found by given email",
+            500: "Internal server error"
+        }
     )
     def put(self, request):
         email = request.query_params.get('email')
@@ -398,12 +432,11 @@ class UpdateUser(APIView):
             try:
                 user = User_model.objects.get(email=email)
             except User_model.DoesNotExist:
-                return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "User not found"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'status': status.HTTP_404_NOT_FOUND, 'Response': "User not found"}, status=status.HTTP_404_NOT_FOUND)
             
             input_data = request.data
             print(input_data)
             
-            # Separate user data and vendor data
             user_data = {k: v for k, v in input_data.items() if k not in ['contact_details', 'on_time_delivery_rate', 'quality_rating_avg', 'average_response_time', 'fulfillment_rate']}
             vendor_data = {k: v for k, v in input_data.items() if k in ['contact_details', 'on_time_delivery_rate', 'quality_rating_avg', 'average_response_time', 'fulfillment_rate']}
 
@@ -412,7 +445,6 @@ class UpdateUser(APIView):
             if ser.is_valid():
                 user_instance = ser.save()
 
-                # Update vendor data if the user is a vendor
                 if user_instance.user_role.lower() == 'vendor':
                     try:
                         vendor_instance = user_instance.vendor_user
@@ -433,14 +465,20 @@ class DeleteUser(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     @swagger_auto_schema(
-        operation_description="Delete User",
-        operation_summary="Delete User",
+        operation_summary="Delete a user",
         tags=['Admin','Vendor'],
         manual_parameters=
         [
             openapi.Parameter('email', openapi.IN_QUERY, type=openapi.TYPE_STRING),
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING),
-        ]
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING,default="Bearer "),
+        ],
+        responses={
+            200: "Deleted data successfully",
+            400: "Bad request",
+            401: "Unauthorized",
+            404: "User not found by given email",
+            500: "Internal server error"
+        }
     )
     def delete(self,request):
         email = request.query_params.get('email')
@@ -452,20 +490,27 @@ class DeleteUser(APIView):
             user.delete()
             return Response({'status':status.HTTP_200_OK,"message": "User deleted"}, status=status.HTTP_200_OK)
         except User_model.DoesNotExist:
-            return Response({'status':status.HTTP_400_BAD_REQUEST,"message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'status':status.HTTP_404_NOT_FOUND,"message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class GetallUser(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
     @swagger_auto_schema(
-        operation_description="Get all User detail, Only Admin have this permission",
-        operation_summary="All User Details",
+        operation_summary="Get all user details",
         tags=['Admin', 'Vendor'],
         manual_parameters=[
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication"),
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer "),
             openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by email, first name, or last name (case-insensitive)")
-        ]
+        ],
+        responses={
+            200: "Successfully get all data",
+            400: "Bad request",
+            401: "Unauthorized",
+            500: "Internal server error"
+        }
     )
     def get(self, request):
         try:
@@ -486,43 +531,45 @@ class GetallUser(APIView):
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
 class Get_ParticularUser(APIView):
     authentication_classes=[JWTAuthentication]
     permission_classes=[IsAuthenticated]
     @swagger_auto_schema(
-        operation_description="Get particular Teacher detail, only a Principle or Admin can access this",
-        operation_summary="Principle Detail",
+        operation_summary="Get details of a particular user",
         tags=['Admin',"Vendor"],
         manual_parameters=[
             openapi.Parameter('email',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter email to get verification otp"),
-            openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication")
-        ]
+            openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication",default="Bearer ")
+        ],
+        responses={
+            200: "Successfully got all data",
+            400: "Bad request",
+            401: "Unauthorized",
+            404: "User not found by given email",
+            500: "Internal server error"
+        }
     )
     def get(self, request):
         email = request.query_params.get('email')
         try:
-            try:
-                user = User_model.objects.get(email=email)
-            except Exception as e:
-                return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': 'User not found'}, status=status.HTTP_400_BAD_REQUEST)
-        
+            user = User_model.objects.get(email=email)
 
             ser = UserSerializer(user)
             
             return Response({'status': status.HTTP_200_OK, 'response': ser.data}, status=status.HTTP_200_OK)
+        
+        except User_model.DoesNotExist :
+             return Response({'status': status.HTTP_404_NOT_FOUND, 'response': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
 
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
  
-#API's from Items
 class CreateItem(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-            operation_description="You can create a user as per roles like admin, vendor and user",
-            operation_summary="Create User as per required fields",
+            operation_summary="Create a item as per required fields",
             tags=['Item'],
             request_body=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
@@ -535,8 +582,14 @@ class CreateItem(APIView):
                     }
                 ),
             manual_parameters=[
-                openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
-            ]
+                openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer ")
+            ],
+            responses={
+                201: "Created successfully",
+                400: "Bad request",
+                401: "Unauthorized",
+                500: "Internal server error"
+            }
         )
     def post(self,request):
         try:
@@ -559,8 +612,7 @@ class UpdateItem(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_description="Update User details",
-        operation_summary="User Update",
+        operation_summary="Update item data",
         tags=['Item'],
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
@@ -574,22 +626,25 @@ class UpdateItem(APIView):
         ),
         manual_parameters=[
             openapi.Parameter('id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="Enter id of item"),
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
-        ]
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer ")
+        ],
+        responses={
+            202: "Updated data successfully",
+            400: "Bad request",
+            401: "Unauthorized",
+            404: "Item not found",
+            500: "Internal server error"
+        }
     )
     def put(self, request):
         id = request.query_params.get('id')
 
         try:
-            try:
-                user = ItemsModel.objects.get(id=id)
-            except ItemsModel.DoesNotExist:
-                return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "Item not found"}, status=status.HTTP_400_BAD_REQUEST)
+            user = ItemsModel.objects.get(id=id)
             
             input_data = request.data
             print(input_data)
             
-            # Update user data
             ser = ItemSerializer(user, data=input_data, partial=True)
             if ser.is_valid():
                 ser.save()
@@ -597,7 +652,10 @@ class UpdateItem(APIView):
                 return Response({'status': status.HTTP_202_ACCEPTED, 'Response': "Updated successfully"}, status=status.HTTP_202_ACCEPTED)
             return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "Can't update data", "error": ser.errors},
                             status=status.HTTP_400_BAD_REQUEST)
-
+        
+        except ItemsModel.DoesNotExist:
+                return Response({'status': status.HTTP_404_NOT_FOUND, 'Response': "Item not found"}, status=status.HTTP_404_NOT_FOUND)
+            
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -605,14 +663,19 @@ class DeleteItem(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     @swagger_auto_schema(
-        operation_description="Delete Item",
-        operation_summary="Delete Item",
+        operation_summary="Delete a Item",
         tags=['Item'],
         manual_parameters=
         [
             openapi.Parameter('id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="Enter id of item"),
             openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING),
-        ]
+        ],
+        responses={
+            200: "Deleted successfully",
+            401: "Unauthorized",
+            404: "User not found by given email",
+            500: "Internal server error"
+        }
     )
     def delete(self,request):
         id = request.query_params.get('id')
@@ -621,7 +684,9 @@ class DeleteItem(APIView):
             user.delete()
             return Response({'status':status.HTTP_200_OK,"message": "Item deleted"}, status=status.HTTP_200_OK)
         except ItemsModel.DoesNotExist:
-            return Response({'status':status.HTTP_400_BAD_REQUEST,"message": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'status':status.HTTP_404_NOT_FOUND,"message": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class GetallItem(APIView):
     authentication_classes = [JWTAuthentication]
@@ -634,7 +699,12 @@ class GetallItem(APIView):
         manual_parameters=[
             openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication"),
             openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by email, first name, or last name (case-insensitive)")
-        ]
+        ],
+        responses={
+            200: "Succesfully got all details",
+            401: "Unauthorized",
+            500: "Internal server error"
+        }
     )
     def get(self, request):
         try:
@@ -654,41 +724,40 @@ class Get_ParticularItem(APIView):
     authentication_classes=[JWTAuthentication]
     permission_classes=[IsAuthenticated]
     @swagger_auto_schema(
-        operation_description="Get particular Teacher detail, only a Principle or Admin can access this",
-        operation_summary="Principle Detail",
+        operation_summary="Get a particular item detail by item id",
         tags=['Item'],
         manual_parameters=[
             openapi.Parameter('id',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter email to get verification otp"),
-            openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication")
-        ]
+            openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication",default="Bearer ")
+        ],
+        responses={
+            200: "Succefully got a item detail",
+            404: "Item not found with given id",
+            401: "Unauthorized",
+            500: "Internal server error"
+        }
     )
     def get(self, request):
         id = request.query_params.get('id')
         try:
-            try:
-                item = ItemsModel.objects.get(id=id)
-            except Exception as e:
-                return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': 'Item not found'}, status=status.HTTP_400_BAD_REQUEST)
-        
+            item = ItemsModel.objects.get(id=id)
 
             ser = ItemSerializer(item)
             
             return Response({'status': status.HTTP_200_OK, 'response': ser.data}, status=status.HTTP_200_OK)
 
+        except ItemsModel.DoesNotExist :
+            return Response({'status': status.HTTP_404_NOT_FOUND, 'response': 'Item not found'}, status=status.HTTP_404_NOT_FOUND)
+        
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
- 
 
-#API's for Purchase Order
-
-# Have to add serializer to create purchase order
 class Create_PurchaseOrder(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_description="Create a new purchase order",
-        operation_summary="Create a new purchase order",
+        operation_summary="Create a purchase order",
         tags=['Purchase'],
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
@@ -704,8 +773,14 @@ class Create_PurchaseOrder(APIView):
             }
         ),
         manual_parameters=[
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
-        ]
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer ")
+        ],
+        responses={
+            201: "Created purchase order successfully",
+            401: "Unauthorized",
+            404: "Vendor not found by given email",
+            500: "Internal server error"
+        }
     )
     def post(self, request):
         try:
@@ -745,23 +820,28 @@ class Create_PurchaseOrder(APIView):
 
             return Response({'status': status.HTTP_201_CREATED, 'response': 'Purchase order placed successfully','po_number':po_obj.po_number}, status=status.HTTP_201_CREATED)
 
+        except VendorModel.DoesNotExist:
+            return Response({'status': status.HTTP_404_NOT_FOUND, 'response': "vendor email is not valid, please check the email for vendor"}, status=status.HTTP_400_BAD_REQUEST)
+        
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        except VendorModel.DoesNotExist:
-            return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': "vendor email is not valid, please check the email for vendor"}, status=status.HTTP_400_BAD_REQUEST)
         
 class GetallPurchaseOrder(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     
     @swagger_auto_schema(
-        operation_description="Get all Item detail, Only Admin have this permission",
-        operation_summary="All Item Details",
+        operation_summary="Get details for all purchase order and search by ",
         tags=['Purchase'],
         manual_parameters=[
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication"),
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer "),
             openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by email, first name, or last name (case-insensitive)")
-        ]
+        ],
+        responses={
+            200: "Successfully got all purchase orders",
+            401: "Unauthorized",
+            500: "Internal server error"
+        }
     )
     def get(self, request):
         try:
@@ -773,6 +853,7 @@ class GetallPurchaseOrder(APIView):
                 purchase_obj = purchase_obj.filter(Q(name__icontains=search_query) | Q(price__icontains=search_query))
 
             ser = PurchaseOrderSerializer(purchase_obj, many=True)
+
             return Response({'status': status.HTTP_200_OK, 'response': ser.data}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -781,27 +862,31 @@ class Get_ParticularPurchaseOrder(APIView):
     authentication_classes=[JWTAuthentication]
     permission_classes=[IsAuthenticated]
     @swagger_auto_schema(
-        operation_description="Get particular Teacher detail, only a Principle or Admin can access this",
-        operation_summary="Principle Detail",
+        operation_summary="Get particular purchase order by po_number",
         tags=['Purchase'],
         manual_parameters=[
             openapi.Parameter('po_number',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter po_number to get purchase order details"),
-            openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication")
-        ]
+            openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication",default="Bearer ")
+        ],
+        responses={
+            200: "Successfully get a purchase order detail",
+            401: "Unauthorized",
+            404: "User not found by given email",
+            500: "Internal server error"
+        }
     )
     def get(self, request):
         po_number = request.query_params.get('po_number')
         try:
-            try:
-                po_obj = PurchaseOrderModel.objects.get(po_number=po_number)
-            except Exception as e:
-                return Response({'status': status.HTTP_400_BAD_REQUEST, 'response': f'No purchase order not found by po_number {po_number}'}, status=status.HTTP_400_BAD_REQUEST)
-        
-
+            po_obj = PurchaseOrderModel.objects.get(po_number=po_number)
+    
             ser = PurchaseOrderSerializer(po_obj)
             
             return Response({'status': status.HTTP_200_OK, 'response': ser.data}, status=status.HTTP_200_OK)
-
+        
+        except PurchaseOrderModel.DoesNotExist :
+                return Response({'status': status.HTTP_404_NOT_FOUND, 'response': f'No purchase order not found by po_number {po_number}'}, status=status.HTTP_404_NOT_FOUND)
+        
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -810,8 +895,7 @@ class UpdatePurchaseOrder(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_description="Update purchase order status",
-        operation_summary="User Update",
+        operation_summary="Update a purchase order",
         tags=['Purchase'],
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
@@ -826,39 +910,54 @@ class UpdatePurchaseOrder(APIView):
         ),
         manual_parameters=[
             openapi.Parameter('po_number', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Enter po_number of purchase item"),
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
-        ]
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer ")
+        ],
+        responses={
+            202: "Updated data successfully",
+            400: "Bad request",
+            401: "Unauthorized",
+            404: "Purchase order not found with given po_number",
+            500: "Internal server error"
+        }
     )
     def put(self, request):
-        po_number = request.query_params.get('po_number')
-
         try:
-            po_obj = PurchaseOrderModel.objects.get(po_number=po_number)
-        except PurchaseOrderModel.DoesNotExist:
-            return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': f"Order not found by po_number {po_number}"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        input_data = request.data
-        if input_data.get('status'):
-            input_data['status'] = input_data['status'].lower()
-        
-        serializer = PurchaseOrderSerializer(po_obj, data=input_data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({'status': status.HTTP_202_ACCEPTED, 'Response': "Updated successfully"}, status=status.HTTP_202_ACCEPTED)
-        return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "Can't update data", "error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+            po_number = request.query_params.get('po_number')
+
+            try:
+                po_obj = PurchaseOrderModel.objects.get(po_number=po_number)
+            except PurchaseOrderModel.DoesNotExist:
+                return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': f"Order not found by po_number {po_number}"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            input_data = request.data
+            if input_data.get('status'):
+                input_data['status'] = input_data['status'].lower()
+            
+            serializer = PurchaseOrderSerializer(po_obj, data=input_data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({'status': status.HTTP_202_ACCEPTED, 'Response': "Updated successfully"}, status=status.HTTP_202_ACCEPTED)
+            return Response({'status': status.HTTP_400_BAD_REQUEST, 'Response': "Can't update data", "error": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class DeletePurchaseOrder(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     @swagger_auto_schema(
-        operation_description="Delete purchase order",
-        operation_summary="Delete purchase order",
+        operation_summary="Delete a purchase order",
         tags=['Purchase'],
         manual_parameters=
         [
             openapi.Parameter('po_number',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter po_number to get purchase order details"),
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING),
-        ]
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING,default="Bearer "),
+        ],
+        responses={
+            200: "Deleted successfully",
+            401: "Unauthorized",
+            404: "Purchase order not found with given po_number",
+            500: "Internal server error"
+        }
     )
     def delete(self,request):
         po_number = request.query_params.get('po_number')
@@ -867,20 +966,27 @@ class DeletePurchaseOrder(APIView):
             po_obj.delete()
             return Response({'status':status.HTTP_200_OK,"message": "Purchase order deleted"}, status=status.HTTP_200_OK)
         except ItemsModel.DoesNotExist:
-            return Response({'status':status.HTTP_400_BAD_REQUEST,"message": f'No purchase order not found by po_number {po_number}'}, status=status.HTTP_404_NOT_FOUND)
-
+            return Response({'status':status.HTTP_404_NOT_FOUND,"message": f'No purchase order not found by po_number {po_number}'}, status=status.HTTP_404_NOT_FOUND)
+        
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'response': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class AcknowledgePurchaseOrder(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_description="Update purchase order status",
-        operation_summary="User Update",
+        operation_summary="To acknowledge a purchase order by vendor",
         tags=['Purchase'],
         manual_parameters=[
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
-        ]
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer ")
+        ],
+        responses={
+            200: "Got data successfully",
+            401: "Unauthorized",
+            404: "Purchase order not found with given email",
+            500: "Internal server error"
+        }
     )
     def post(self,request,po_number):
         try:
@@ -898,18 +1004,22 @@ class AcknowledgePurchaseOrder(APIView):
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
 class Get_VendorPerformance(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        operation_description="Get vendor performance by vendor code",
-        operation_summary="Get a vendor performance",
+        operation_summary="Get a vendor performace ",
         tags=['Vendor'],
         manual_parameters=[
-            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication")
-        ]
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer ")
+        ],
+        responses={
+            200: "Got data successfully",
+            401: "Unauthorized",
+            404: "Vendor not found with given vendor code",
+            500: "Internal server error"
+        }
     )
     def get(self,request,code):
         try:
@@ -928,3 +1038,57 @@ class Get_VendorPerformance(APIView):
         except Exception as e:
             return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+class GetHistoricalRecord(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_summary="Get historical records metrices as per month and year",
+        tags=['Historical Record'],
+        manual_parameters=[
+            openapi.Parameter('month', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="Enter month number for which you want record. eg: 1 for jan"),
+            openapi.Parameter('year', openapi.IN_QUERY, type=openapi.TYPE_INTEGER,description="Enter year for which you want record. eg: 2024"),
+            openapi.Parameter('vendor_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER,description="Enter vendor code"),
+            openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer ")
+        ],
+        responses={
+            200: "Got data successfully",
+            401: "Unauthorized",
+            404: "Vendor not found with given vendor code",
+            500: "Internal server error"
+        }
+    )
+    def get(self,request):
+        try:
+            id = request.query_params.get('vendor_id')
+            month = request.query_params.get('month')
+            year = request.query_params.get('year')
+
+            vendor_instance = VendorModel.objects.get(id=int(id))
+            print(vendor_instance,month,year)
+            data = {}
+            if month and year:
+                historical_record = HistoricalPerformanceModel.objects.get(vendor=vendor_instance,month=month,year=year)
+                data = {
+                    "on_time_delivery_rate":historical_record.on_time_delivery_rate,
+                    "quality_rating_avg":historical_record.quality_rating_avg,
+                    "average_response_time":historical_record.average_response_time,
+                    "fulfillment_rate":historical_record.fulfillment_rate
+                }
+                return Response({'status':status.HTTP_200_OK,"vendor_email":vendor_instance.user.email,"month":month,"year":year,"response":data},status=status.HTTP_200_OK)
+            
+            historical_record = HistoricalPerformanceModel.objects.filter(vendor=vendor_instance)
+            for records in historical_record:
+                data[f"{records.month}/{records.year}"] = {
+                    "on_time_delivery_rate":records.on_time_delivery_rate,
+                    "quality_rating_avg":records.quality_rating_avg,
+                    "average_response_time":records.average_response_time,
+                    "fulfillment_rate":records.fulfillment_rate
+                }
+                
+            return Response({'status':status.HTTP_200_OK,"vendor_email":vendor_instance.user.email,"response":data},status=status.HTTP_200_OK)
+            
+        except VendorModel.DoesNotExist:
+            return Response({'status': status.HTTP_404_NOT_FOUND, 'message': 'Vendor not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'status': status.HTTP_500_INTERNAL_SERVER_ERROR, 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

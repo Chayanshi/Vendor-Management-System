@@ -2,11 +2,25 @@ from .models import *
 import random
 import string
 from django.utils import timezone
+from datetime import datetime,timedelta
 
+def get_date(month,year):
+    start_date = datetime(year, month, 1)
 
-def calculate_quality_rating_average(vendor):
+    end_date = datetime(year, month, 1).replace(month=month % 12 + 1, day=1) - timedelta(days=1)
+    return start_date,end_date
+
+def calculate_quality_rating_average(vendor,month=None, year=None):
     print("in helper calculate_quality_rating_average")
-    completed_pos = PurchaseOrderModel.objects.filter(vendor=vendor, status='completed')
+    if month and year:
+        print("for monthly date in helper")
+        start_date,end_date = get_date(month,year)
+        print(start_date,end_date)
+        completed_pos = PurchaseOrderModel.objects.filter(vendor=vendor, status='completed',order_date__gte=start_date,order_date__lte=end_date)
+        print("completed_pos.count()",completed_pos.count())
+    else:
+        completed_pos = PurchaseOrderModel.objects.filter(vendor=vendor, status='completed')
+
     total_quality_rating = 0
     total_completed_pos_with_rating = 0
 
@@ -24,9 +38,16 @@ def calculate_quality_rating_average(vendor):
         
     return quality_rating_average
 
-def calculate_on_time_delivery_rate(vendor):
-    print("in helper calculate_on_time_delivery_rate")
-    completed_pos = PurchaseOrderModel.objects.filter(vendor=vendor, status='completed')
+def calculate_on_time_delivery_rate(vendor,month=None, year=None):
+    print("\n\n in helper calculate_on_time_delivery_rate")
+    if month and year:
+        print("for monthly date in helper")
+        start_date,end_date = get_date(month,year)
+        print(start_date,end_date)
+        completed_pos = PurchaseOrderModel.objects.filter(vendor=vendor, status='completed',order_date__gte=start_date,order_date__lte=end_date)
+        print("completed_pos.count()",completed_pos.count())
+    else:
+        completed_pos = PurchaseOrderModel.objects.filter(vendor=vendor, status='completed')
     total_completed_pos = completed_pos.count() 
     on_time_deliveries = 0
 
@@ -43,10 +64,18 @@ def calculate_on_time_delivery_rate(vendor):
 
     return on_time_delivery_rate
 
-def calculate_fulfillment_rate(vendor):
-    print("in helper calculate_fulfillment_rate")
-    total_orders = PurchaseOrderModel.objects.filter(vendor=vendor).count()
-    fulfilled_orders = PurchaseOrderModel.objects.filter(vendor=vendor, status='completed').count()
+def calculate_fulfillment_rate(vendor,month=None, year=None):
+    print("\n\nin helper calculate_fulfillment_rate")
+    if month and year:
+        print("for monthly date in helper")
+        start_date,end_date = get_date(month,year)
+        print(start_date,end_date)
+        total_orders = PurchaseOrderModel.objects.filter(vendor=vendor,order_date__gte=start_date,order_date__lte=end_date).count()
+        fulfilled_orders = PurchaseOrderModel.objects.filter(vendor=vendor, status='completed',order_date__gte=start_date,order_date__lte=end_date).count()
+        print("total_orders,fulfilled_orders",total_orders,fulfilled_orders)
+    else:
+        total_orders = PurchaseOrderModel.objects.filter(vendor=vendor).count()
+        fulfilled_orders = PurchaseOrderModel.objects.filter(vendor=vendor, status='completed').count()
 
     if total_orders > 0:
         fulfillment_rate = fulfilled_orders / total_orders
@@ -56,13 +85,20 @@ def calculate_fulfillment_rate(vendor):
     return fulfillment_rate
 
 
-def calculate_avg_response_time(vendor):
-    print("in helper calculate_avg_response_time",vendor)
-    total_response_time = 0
-    acknowledged_orders = PurchaseOrderModel.objects.filter(
-        vendor=vendor, acknowledgment_date__isnull=False
-    )
+def calculate_avg_response_time(vendor,month=None, year=None):
+    print("\n\nin helper calculate_avg_response_time",vendor)
+    if month and year:
+        print("for monthly date in helper")
+        start_date,end_date = get_date(month,year)
+        print(start_date,end_date)
+        acknowledged_orders = PurchaseOrderModel.objects.filter(vendor=vendor, acknowledgment_date__isnull=False,order_date__gte=start_date,order_date__lte=end_date)
+        print("completed_pos.count()",acknowledged_orders.count())
+    else:
+        acknowledged_orders = PurchaseOrderModel.objects.filter(
+            vendor=vendor, acknowledgment_date__isnull=False
+        )
 
+    total_response_time = 0
     for order in acknowledged_orders:
         response_time = order.acknowledgment_date - order.issue_date
         print("response_time",response_time)
