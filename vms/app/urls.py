@@ -46,7 +46,8 @@ urlpatterns = [
    path("Get_ParticularPurchaseOrder",Get_ParticularPurchaseOrder.as_view()),
    path("UpdatePurchaseOrder",UpdatePurchaseOrder.as_view()),
    path("DeletePurchaseOrder",DeletePurchaseOrder.as_view()),
+   path("vendors/Get_VendorPerformance/<str:code>",Get_VendorPerformance.as_view()),
 
    path("PurchaseOrders/AcknowledgePurchaseOrder/<str:po_number>",AcknowledgePurchaseOrder.as_view()),
-   path("vendors/Get_VendorPerformance/<str:code>",Get_VendorPerformance.as_view()),
+   path("GetHistoricalRecord",GetHistoricalRecord.as_view()),
 ]
