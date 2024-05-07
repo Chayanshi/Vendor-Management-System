@@ -506,8 +506,7 @@ class GetallUser(APIView):
         tags=['Admin', 'Vendor'],
         manual_parameters=[
             openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer "),
-            openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by email, user name"),
-            openapi.Parameter('user_role', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search by user role")
+            openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by email, first name, or last name (case-insensitive)")
         ],
         responses={
             200: "Successfully get all data",
@@ -545,7 +544,7 @@ class Get_ParticularUser(APIView):
         operation_summary="Get details of a particular user",
         tags=['Admin',"Vendor"],
         manual_parameters=[
-            openapi.Parameter('email',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter email of user"),
+            openapi.Parameter('email',openapi.IN_QUERY,type=openapi.TYPE_STRING,description="Enter email to get verification otp"),
             openapi.Parameter('Authorization',openapi.IN_HEADER,type=openapi.TYPE_STRING,description="access token for Authentication",default="Bearer ")
         ],
         responses={
@@ -705,7 +704,7 @@ class GetallItem(APIView):
         tags=['Item'],
         manual_parameters=[
             openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication"),
-            openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by name, price, or quantity")
+            openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by email, first name, or last name (case-insensitive)")
         ],
         responses={
             200: "Succesfully got all details",
@@ -842,8 +841,7 @@ class GetallPurchaseOrder(APIView):
         tags=['Purchase'],
         manual_parameters=[
             openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer "),
-            openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by po_number"),
-            openapi.Parameter('status', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search by status")
+            openapi.Parameter('search', openapi.IN_QUERY, type=openapi.TYPE_STRING, description="Search users by email, first name, or last name (case-insensitive)")
         ],
         responses={
             200: "Successfully got all purchase orders",
@@ -1059,7 +1057,7 @@ class GetHistoricalRecord(APIView):
         manual_parameters=[
             openapi.Parameter('month', openapi.IN_QUERY, type=openapi.TYPE_INTEGER, description="Enter month number for which you want record. eg: 1 for jan"),
             openapi.Parameter('year', openapi.IN_QUERY, type=openapi.TYPE_INTEGER,description="Enter year for which you want record. eg: 2024"),
-            openapi.Parameter('vendor_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER,description="Enter vendor id"),
+            openapi.Parameter('vendor_id', openapi.IN_QUERY, type=openapi.TYPE_INTEGER,description="Enter vendor code"),
             openapi.Parameter('Authorization', openapi.IN_HEADER, type=openapi.TYPE_STRING, description="access token for Authentication",default="Bearer ")
         ],
         responses={
@@ -1099,8 +1097,6 @@ class GetHistoricalRecord(APIView):
                 
             return Response({'status':status.HTTP_200_OK,"vendor_email":vendor_instance.user.email,"response":data},status=status.HTTP_200_OK)
             
-        except HistoricalPerformanceModel.DoesNotExist:
-            return Response({'status': status.HTTP_404_NOT_FOUND, 'message': 'Historical record not found for given month/year and vendor'}, status=status.HTTP_404_NOT_FOUND)
         except VendorModel.DoesNotExist:
             return Response({'status': status.HTTP_404_NOT_FOUND, 'message': 'Vendor not found'}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
